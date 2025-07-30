@@ -4,7 +4,7 @@
 #include <thread>
 #include <mutex>
 #include <sstream>
-
+#include <unordered_map>
 
 SearchServer::SearchServer(InvertedIndex& idx) : _index(idx) {}
 
@@ -26,50 +26,55 @@ std::vector<std::vector<RelativeIndex>> SearchServer::search(const std::vector<s
     // Обработка каждого запроса в отдельном потоке
     for (size_t i = 0; i < queries_input.size(); ++i) {
         workers.emplace_back([this, &queries_input, &results, &result_mutex, i]() {
-            std::map<size_t, size_t> doc_relevance;
+            std::unordered_map<size_t, size_t> doc_relevance;
             std::istringstream stream(queries_input[i]);
             std::string word;
 
-            // Собираем частоты слов из запроса
+            // Подсчитываем частоту слов из запроса в документах
             while (stream >> word) {
                 for (const auto& entry : _index.GetWordCount(word)) {
                     doc_relevance[entry.doc_id] += entry.count;
                 }
             }
 
-            if (doc_relevance.empty()) return;
+            if (doc_relevance.empty())
+                return;
 
             // Находим максимальную релевантность
             size_t max_relevance = std::max_element(
                 doc_relevance.begin(), doc_relevance.end(),
-                [](auto& lhs, auto& rhs) {
+                [](const auto& lhs, const auto& rhs) {
                     return lhs.second < rhs.second;
                 }
             )->second;
 
             std::vector<RelativeIndex> rel_indices;
+            rel_indices.reserve(doc_relevance.size());
+
             for (const auto& [doc_id, count] : doc_relevance) {
-                rel_indices.push_back({ doc_id, static_cast<float>(count) / max_relevance });
+                float rank = static_cast<float>(count) / max_relevance;
+                rel_indices.push_back({ doc_id, rank });
             }
 
-            // Сортируем: сначала по убыванию релевантности, потом по doc_id
+            // Сортируем: сначала по убыванию rank, затем по возрастанию doc_id
             std::sort(rel_indices.begin(), rel_indices.end(), [](const auto& lhs, const auto& rhs) {
                 if (lhs.rank == rhs.rank)
                     return lhs.doc_id < rhs.doc_id;
                 return lhs.rank > rhs.rank;
             });
 
-            // Оставляем только top-5 результатов
+            // Ограничим top-N результатов (по умолчанию 5)
             const size_t MAX_RESPONSES = 5;
             if (rel_indices.size() > MAX_RESPONSES) {
                 rel_indices.resize(MAX_RESPONSES);
             }
-            // Потокобезопасно сохраняем результат
+
+            // Потокобезопасное сохранение результата
             std::lock_guard<std::mutex> lock(result_mutex);
             results[i] = std::move(rel_indices);
         });
     }
 
-    // Потоки завершатся через RAII
+    // Все потоки завершатся через ThreadJoiner
     return results;
 }

@@ -6,16 +6,23 @@
 #include <algorithm>
 
 void InvertedIndex::UpdateDocumentBase(std::vector<std::string> input_docs) {
-    // Заменяем старую базу документов
+    // Если документы пусты — очищаем и выходим
+    if (input_docs.empty()) {
+        docs.clear();
+        freq_dictionary.clear();  // Быстрое очищение без лишних аллокаций
+        return;
+    }
+
+    // Заменяем старую базу документов на новую
     docs = std::move(input_docs);
 
-    // Полностью очищаем словарь (вместе с памятью)
+    // Полностью очищаем словарь с потенциальным освобождением памяти
     std::map<std::string, std::vector<Entry>>().swap(freq_dictionary);
 
     std::mutex freq_mutex;
     std::vector<std::thread> workers;
 
-    // RAII-объект для автоматического join всех потоков
+    // RAII-структура для корректного завершения всех потоков
     struct ThreadJoiner {
         std::vector<std::thread>& threads;
         ~ThreadJoiner() {
@@ -24,7 +31,7 @@ void InvertedIndex::UpdateDocumentBase(std::vector<std::string> input_docs) {
         }
     } joiner{workers};
 
-    // Запускаем параллельную обработку каждого документа
+    // Обработка каждого документа в отдельном потоке
     for (size_t doc_id = 0; doc_id < docs.size(); ++doc_id) {
         workers.emplace_back([this, &freq_mutex, doc_id]() {
             std::istringstream stream(docs[doc_id]);
@@ -36,7 +43,7 @@ void InvertedIndex::UpdateDocumentBase(std::vector<std::string> input_docs) {
                 ++word_count[word];
             }
 
-            // Безопасно добавляем частоты в общий словарь
+            // Потокобезопасное обновление общей частотной таблицы
             std::lock_guard<std::mutex> lock(freq_mutex);
             for (const auto& [w, count] : word_count) {
                 freq_dictionary[w].push_back({ doc_id, count });
@@ -44,16 +51,18 @@ void InvertedIndex::UpdateDocumentBase(std::vector<std::string> input_docs) {
         });
     }
 
-    // Потоки автоматически join-нутся через ThreadJoiner
+    // Потоки будут завершены автоматически в деструкторе joiner
 }
 
 std::vector<Entry> InvertedIndex::GetWordCount(const std::string& word) {
-    if (freq_dictionary.count(word) == 0) {
-        return {};  // слово не найдено
+    auto it = freq_dictionary.find(word);
+    if (it == freq_dictionary.end()) {
+        return {};  // Слово не найдено
     }
-    auto result = freq_dictionary[word];
 
-    // Сортируем по doc_id для стабильности
+    std::vector<Entry> result = it->second;
+
+    // Сортировка по doc_id для стабильности
     std::sort(result.begin(), result.end(), [](const Entry& a, const Entry& b) {
         return a.doc_id < b.doc_id;
     });
