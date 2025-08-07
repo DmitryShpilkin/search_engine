@@ -98,7 +98,7 @@ std::vector<std::string> ConverterJSON::GetRequests() {
 }
 
 // Сохраняем результаты поиска в файл answers.json
-void ConverterJSON::putAnswers(const std::vector<std::vector<std::pair<int, float>>>& answers) {
+void ConverterJSON::putAnswers(const std::vector<std::vector<std::pair<size_t, float>>>& answers) {
     json answers_json;
     answers_json["answers"] = json::object();
 

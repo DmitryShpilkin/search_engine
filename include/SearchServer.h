@@ -34,7 +34,7 @@ public:
      * @return Вектор списков релевантных документов для каждого запроса.
      *         Каждый результат отсортирован по убыванию релевантности.
      */
-    std::vector<std::vector<RelativeIndex>> search(const std::vector<std::string>& queries_input);
+    std::vector<std::vector<RelativeIndex>> search(const std::vector<std::string>& queries_input, int max_responses);
 
 private:
     InvertedIndex& _index;  ///< Ссылка на внешний инвертированный индекс

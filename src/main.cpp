@@ -17,14 +17,17 @@ int main() {
         // Читаем поисковые запросы
         auto requests = converter.GetRequests();
 
+        // Получаем ограничение на количество ответов
+        int max_responses = converter.GetResponsesLimit();
+
         // Запускаем поисковый сервер
         SearchServer search_server(index);
-        auto answers = search_server.search(requests);
+        auto answers = search_server.search(requests, max_responses);
 
         // Подготовка данных для записи
-        std::vector<std::vector<std::pair<int, float>>> output_answers;
+        std::vector<std::vector<std::pair<size_t, float>>> output_answers;
         for (const auto& result_vector : answers) {
-            std::vector<std::pair<int, float>> ranked_entries;
+            std::vector<std::pair<size_t, float>> ranked_entries;
             for (const auto& rel_idx : result_vector) {
                 ranked_entries.emplace_back(rel_idx.doc_id, rel_idx.rank);
             }

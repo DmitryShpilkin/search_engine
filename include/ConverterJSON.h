@@ -36,5 +36,5 @@ public:
      * @brief Записывает результаты поиска в файл answers.json.
      * @param answers Результаты поиска: вектор для каждого запроса, содержащий пары (doc_id, релевантность).
      */
-    void putAnswers(const std::vector<std::vector<std::pair<int, float>>>& answers);
+    void putAnswers(const std::vector<std::vector<std::pair<size_t, float>>>& answers);
 };

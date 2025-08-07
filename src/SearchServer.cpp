@@ -9,7 +9,7 @@
 SearchServer::SearchServer(InvertedIndex& idx) : _index(idx) {}
 
 // Обрабатываем список запросов и возвращаем результаты поиска
-std::vector<std::vector<RelativeIndex>> SearchServer::search(const std::vector<std::string>& queries_input) {
+std::vector<std::vector<RelativeIndex>> SearchServer::search(const std::vector<std::string>& queries_input, int max_responses) {
     std::vector<std::vector<RelativeIndex>> results(queries_input.size());
     std::mutex result_mutex;
     std::vector<std::thread> workers;
@@ -25,23 +25,27 @@ std::vector<std::vector<RelativeIndex>> SearchServer::search(const std::vector<s
 
     // Обработка каждого запроса в отдельном потоке
     for (size_t i = 0; i < queries_input.size(); ++i) {
-        workers.emplace_back([this, &queries_input, &results, &result_mutex, i]() {
+        workers.emplace_back([this, &queries_input, &results, &result_mutex, i, max_responses]() {
             std::unordered_map<size_t, size_t> doc_relevance;
             std::istringstream stream(queries_input[i]);
             std::string word;
 
             // Подсчитываем частоту слов из запроса в документах
             while (stream >> word) {
-                for (const auto& entry : _index.GetWordCount(word)) {
-                    doc_relevance[entry.doc_id] += entry.count;
-                }
+                if (word.length() > 100)
+                   continue; // игнорируем слишком длинные слова
+
+               for (const auto& entry : _index.GetWordCount(word)) {
+               doc_relevance[entry.doc_id] += entry.count;
+               }
             }
+
 
             if (doc_relevance.empty())
                 return;
 
             // Находим максимальную релевантность
-            size_t max_relevance = std::max_element(
+           size_t max_relevance = std::max_element(
                 doc_relevance.begin(), doc_relevance.end(),
                 [](const auto& lhs, const auto& rhs) {
                     return lhs.second < rhs.second;
@@ -64,15 +68,14 @@ std::vector<std::vector<RelativeIndex>> SearchServer::search(const std::vector<s
             });
 
             // Ограничим top-N результатов (по умолчанию 5)
-            const size_t MAX_RESPONSES = 5;
-            if (rel_indices.size() > MAX_RESPONSES) {
-                rel_indices.resize(MAX_RESPONSES);
-            }
+            if (rel_indices.size() > static_cast<size_t>(max_responses)) {
+                 rel_indices.resize(max_responses);
+             }
 
             // Потокобезопасное сохранение результата
             std::lock_guard<std::mutex> lock(result_mutex);
-            results[i] = std::move(rel_indices);
-        });
+             results[i] = std::move(rel_indices);
+         });
     }
 
     // Все потоки завершатся через ThreadJoiner
